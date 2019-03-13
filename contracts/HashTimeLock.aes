@@ -1,90 +1,103 @@
 contract HashedtimeLock =
 
-  record lockContract = 
-    { 
-      amount: int, 
-      hashLock: int, 
-      timeLock: int, 
-      sender: address, 
-      receiver: address, 
-      withdrawn: bool,
-      refunded: bool, 
-      preimage: string 
-    } 
+  record lock_contract = 
+    {  amount: int
+    ,  hash_lock: int
+    ,  time_lock: int
+    ,  sender: address
+    ,  receiver: address
+    ,  withdrawn: bool
+    ,  refunded: bool
+    ,  preimage: string } 
   
   record state = 
     { 
-      contracts: map(int, lockContract) 
+      contracts: map(int, lock_contract) 
     }
       
   public stateful function init() = { contracts = {} }
   
-  public stateful function newContract(receiver : address, hashLock : int, timeLock : int) : int =
-    hasEnoughFunds()
-    isCorrectTimeLock(timeLock)
-    let str : string = getStr(receiver, hashLock, timeLock)
-    let contractId : int = String.sha3(str)
-    require(!Map.member(contractId, state.contracts), "CONTRACT_ALREADY_EXISTS")
-    let lockContract : lockContract = {sender = Call.caller, receiver = receiver, amount = Call.value, hashLock = hashLock, timeLock = timeLock, withdrawn = false, refunded = false, preimage = ""}
-    put(state{contracts[contractId] = lockContract })
-    contractId
-    
-  public stateful function withdraw(contractId : int, preimage : string) : bool =
-  	contractExists(contractId)
-  	isHashLockMatched(contractId, preimage)
-  	isWithdrawable(contractId)
-  	put(state{contracts[contractId].preimage = preimage})
-  	put(state{contracts[contractId].withdrawn = true})
-  	Chain.spend(state.contracts[contractId].receiver, state.contracts[contractId].amount)
-  	true
-    
-  public function refund(contractId : int) : bool =
-  	contractExists(contractId)
-  	isRefundable(contractId)
-  	put(state{contracts[contractId].refunded = true})
-  	Chain.spend(state.contracts[contractId].sender, state.contracts[contractId].amount)
-  	true
-    
-  public function getContract(contractId : int) : lockContract =
-  	Map.lookup_default(contractId, state.contracts, {sender = #0, receiver = #0, amount = 0, hashLock = 0, timeLock = 0, withdrawn = false, refunded = false, preimage = ""})
+  public stateful function new_contract(receiver : address, hash_lock : int, time_lock : int) : int =
+    check_funds(Call.value)
+    check_timelock(time_lock)
+    let str : string = getStr(receiver, hash_lock, time_lock)
+    let contract_id : int = String.sha3(str)
+    require(!Map.member(contract_id, state.contracts), "CONTRACT_ALREADY_EXISTS")
+    let lock_contract : lock_contract = 
+      {  sender = Call.caller
+       , receiver = receiver
+       , amount = Call.value
+       , hash_lock = hash_lock
+       , time_lock = time_lock
+       , withdrawn = false
+       , refunded = false
+       , preimage = "" }
+    put(state{contracts[contract_id] = lock_contract })
+    contract_id
   
-  private function hasEnoughFunds() =
-    require(Call.value > 0 ,"INVALID_AMOUNT")
+  public stateful function withdraw(contract_id : int, preimage : string) : bool =
+    let temp_contract : lock_contract = state.contracts[contract_id]
+    check_contract(temp_contract.sender)
+    check_hash_for_match(temp_contract.hash_lock, preimage)
+    check_for_withdraw(
+      temp_contract.receiver,
+      temp_contract.withdrawn,
+      temp_contract.time_lock)
+    let updated_contract = temp_contract{preimage = preimage, withdrawn = true}
+    put(state{contracts[contract_id] = updated_contract})
+    Chain.spend(temp_contract.receiver, temp_contract.amount)
+    true
     
-  private function isCorrectTimeLock(time : int) =
-  	require(time > Chain.timestamp, "INVALID_TIME_LOCK")
+  public function refund(contract_id : int) : bool =
+    let temp_contract : lock_contract = state.contracts[contract_id]    
+    check_contract(temp_contract.sender)
+    check_for_refund(
+         temp_contract.sender, 
+         temp_contract.refunded, 
+         temp_contract.withdrawn, 
+         temp_contract.time_lock) 
+    put(state{contracts[contract_id].refunded = true})
+    Chain.spend(temp_contract.sender, temp_contract.amount)
+    true
     
-  private function contractExists(contractId : int) =
-  	require(haveContract(contractId), "CONTRACT_NOT_EXISTS")
+  public function get_contract(contract_id : int) : lock_contract =
+    Map.lookup_default(contract_id, state.contracts, 
+      {  sender = #0
+       , receiver = #0
+       , amount = 0
+       , hash_lock = 0
+       , time_lock = 0
+       , withdrawn = false
+       , refunded = false
+       , preimage = "" })
+  
+  private function check_funds(value : int) =
+    require(value > 0 ,"INVALID_AMOUNT")
+    
+  private function check_timelock(time : int) =
+    require(time > Chain.timestamp, "INVALID_TIME_LOCK")
+    
+  private function check_contract(sender : address) =
+  	require(sender != #0, "CONTRACT_NOT_EXISTS")
       
-  private function isHashLockMatched(contractId: int, secret : string) =
-	require(state.contracts[contractId].hashLock == String.sha3(secret) , "HASH_LOCK_NOT_MATCH")
+  private function check_hash_for_match(hash_lock: int, secret : string) =
+    require(hash_lock == String.sha3(secret) , "HASH_LOCK_NOT_MATCH")
   
-  private function isWithdrawable(contractId : int) =
-  	require(state.contracts[contractId].receiver == Call.caller, "INVALID_RECEIVER")
-	require(state.contracts[contractId].withdrawn == false, "ALREADY_WITHDRAWN" )
-  	require(state.contracts[contractId].timeLock > Chain.timestamp, "INVALID_TIME_LOCK")
+  private function check_for_withdraw(receiver : address, withdrawn : bool, time_lock : int) =
+    check_timelock(time_lock)
+    require(receiver  == Call.caller, "INVALID_RECEIVER")
+    require(withdrawn == false, "ALREADY_WITHDRAWN" )
   
-  private function isRefundable(contractId : int) =
-  	require(state.contracts[contractId].sender == Call.caller, "INVALID_SENDER")
-  	require(state.contracts[contractId].refunded == false, "ALREADY_REFUNDED")
-  	require(state.contracts[contractId].withdrawn == false, "ALREADY_WITHDRAWN")
-  	require(state.contracts[contractId].timeLock =< Chain.timestamp, "INVALID_TIME_LOCK")
+  private function check_for_refund(sender : address, refunded : bool, withdrawn : bool, time_lock : int) =
+  	require(sender    == Call.caller, "INVALID_SENDER")
+  	require(refunded  == false, "ALREADY_REFUNDED")
+  	require(withdrawn == false, "ALREADY_WITHDRAWN")
+  	require(time_lock =< Chain.timestamp, "INVALID_TIME_LOCK")
     
-  private function haveContract(contractId : int) : bool =
-  	let exists : bool = state.contracts[contractId].sender != #0
-  	exists
-  
   private function require(b : bool, err : string) =
     if(!b)
       abort(err)
    
   private function getStr(a : address, h : int, t : int) : string =
-    str_concat(str_concat(a2s(a), i2s(h)), i2s(t))
-  
-  private function a2s(a : address) : string = Address.to_str(a)
- 
-  private function i2s(i : int) : string = Int.to_str(i)
-   
-  private function str_concat(s1, s2) : string = String.concat(s1, s2)
+    String.concat(String.concat(Address.to_str(a), Int.to_str(h)), Int.to_str(t))
  
