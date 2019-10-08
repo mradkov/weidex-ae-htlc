@@ -1,5 +1,5 @@
 {
-  "name": "forgae-project",
+  "name": "weidex-ae-htlc",
   "version": "1.0.0",
   "description": "This is the default package.json generated for your project",
   "main": "index.js",
@@ -9,7 +9,8 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@aeternity/aepp-sdk": "2.3.0",
-    "forgae": "1.1.2"
+    "@aeternity/aepp-sdk": "4.5.0",
+    "aeproject-lib": "1.0.0",
+    "yarn": "1.19.1"
   }
 }

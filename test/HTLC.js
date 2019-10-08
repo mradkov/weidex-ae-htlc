@@ -14,50 +14,22 @@
  *  OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
  *  PERFORMANCE OF THIS SOFTWARE.
  */
-const Ae = require("@aeternity/aepp-sdk").Universal;
 
-const config = {
-  host: "http://localhost:3001/",
-  internalHost: "http://localhost:3001/internal/",
-  gas: 200000,
-  ttl: 55
-};
+const Deployer = require('aeproject-lib').Deployer;
+const EXAMPLE_CONTRACT_PATH = "./contracts/HashTimeLock.aes";
 
-describe("Example Contract", () => {
-  let owner;
+describe('Hash Time Lock Contract', () => {
 
-  before(async () => {
-    const ownerKeyPair = wallets[0];
-    owner = await Ae({
-      url: config.host,
-      internalUrl: config.internalHost,
-      keypair: ownerKeyPair,
-      nativeMode: true,
-      networkId: "ae_devnet"
-    });
-  });
+    let deployer;
+    let ownerKeyPair = wallets[0];
+    
+    before(async () => {
+        deployer = new Deployer('local', ownerKeyPair.secretKey)
+    })
 
-  it("Deploying HTLC Contract", async () => {
-    let contractSource = utils.readFileRelative(
-      "./contracts/HashTimeLock.aes",
-      "utf-8"
-    ); // Read the aes file
+    it('Deploying Hash Time Lock Contract', async () => {
+        const deployPromise = deployer.deploy(EXAMPLE_CONTRACT_PATH) // Deploy it
 
-    const compiledContract = await owner.contractCompile(contractSource, {
-      // Compile it
-      gas: config.gas
-    });
-
-    const deployPromise = compiledContract.deploy({
-      // Deploy it
-      options: {
-        ttl: config.ttl
-      }
-    });
-
-    await assert.isFulfilled(
-      deployPromise,
-      "Could not deploy the HashTimeLock Smart Contract"
-    ); // Check it is deployed
-  });
-});
+        await assert.isFulfilled(deployPromise, 'Could not deploy the HashTimeLock Smart Contract'); // Check whether it's deployed
+    })
+})
